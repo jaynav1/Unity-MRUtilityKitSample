@@ -1,5 +1,8 @@
 using System;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace MRUKSpectator.UI
 {
@@ -53,6 +56,15 @@ namespace MRUKSpectator.UI
         private void OnValidate()
         {
             OnThemeChanged?.Invoke();
+
+#if UNITY_EDITOR
+            // Automatically push live changes to any open SpectatorCanvas in the Editor scene
+            var hud = UnityEngine.Object.FindAnyObjectByType<SpectatorCanvasHUD>();
+            if (hud != null && (hud.Theme == this || hud.Theme == null))
+            {
+                hud.ApplyTheme();
+            }
+#endif
         }
 
         public void NotifyChanged()

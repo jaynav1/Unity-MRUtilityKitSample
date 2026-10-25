@@ -5,18 +5,21 @@ using MRUKSpectator.Network;
 using MRUKSpectator.Visualization;
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace MRUKSpectator.UI
 {
     /// <summary>
-    /// uGUI-based Spectator HUD with centralized SpectatorTheme palette support,
+    /// uGUI-based Spectator HUD with live SpectatorTheme palette synchronization,
     /// connection badges, live room/player stats, and interactive view buttons.
+    /// Runs in Edit Mode via ExecuteAlways so theme edits reflect live.
     /// </summary>
+    [ExecuteAlways]
     public class SpectatorCanvasHUD : MonoBehaviour
     {
         [Header("Theme Palette")]
-        [Tooltip("Enable only if you want the SpectatorTheme asset to override your manual Inspector colors. Keep false to preserve your own UI edits.")]
-        [SerializeField] private bool _usePaletteTheme = false;
         [SerializeField] private SpectatorTheme _theme;
 
         [Header("Status & Info References")]
@@ -51,16 +54,6 @@ namespace MRUKSpectator.UI
 
         private Image _imgFollowPlayer;
 
-        public bool UsePaletteTheme
-        {
-            get => _usePaletteTheme;
-            set
-            {
-                _usePaletteTheme = value;
-                if (_usePaletteTheme) ApplyTheme();
-            }
-        }
-
         public SpectatorTheme Theme
         {
             get => _theme;
@@ -68,8 +61,8 @@ namespace MRUKSpectator.UI
             {
                 if (_theme != null) _theme.OnThemeChanged -= ApplyTheme;
                 _theme = value;
-                if (_theme != null && _usePaletteTheme) _theme.OnThemeChanged += ApplyTheme;
-                if (_usePaletteTheme) ApplyTheme();
+                if (_theme != null) _theme.OnThemeChanged += ApplyTheme;
+                ApplyTheme();
             }
         }
 
@@ -80,16 +73,21 @@ namespace MRUKSpectator.UI
                 _imgFollowPlayer = _btnFollowPlayer.GetComponent<Image>();
             }
 
-            SetupButtonListeners();
+            if (Application.isPlaying)
+            {
+                SetupButtonListeners();
+            }
         }
 
         private void OnEnable()
         {
-            if (_usePaletteTheme && _theme != null)
+            if (_theme != null)
             {
+                _theme.OnThemeChanged -= ApplyTheme;
                 _theme.OnThemeChanged += ApplyTheme;
-                ApplyTheme();
             }
+
+            ApplyTheme();
         }
 
         private void OnDisable()
@@ -100,15 +98,26 @@ namespace MRUKSpectator.UI
             }
         }
 
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            ApplyTheme();
+        }
+#endif
+
+        [ContextMenu("Apply Theme Palette Now")]
         public void ApplyTheme()
         {
-            if (!_usePaletteTheme || _theme == null) return;
+            if (_theme == null) return;
 
             // 1. Scene Camera Background
             Camera cam = Camera.main;
             if (cam != null)
             {
                 cam.backgroundColor = _theme.cameraBackground;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(cam);
+#endif
             }
 
             // 2. Panels and Cards
@@ -119,22 +128,25 @@ namespace MRUKSpectator.UI
             if (_dividerImage != null)
             {
                 _dividerImage.color = _theme.dividerColor;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(_dividerImage);
+#endif
             }
 
             // 3. Typography
-            if (_titleText != null) _titleText.color = _theme.textPrimary;
-            if (_controlsHeaderText != null) _controlsHeaderText.color = _theme.textPrimary;
-            if (_legendTitleText != null) _legendTitleText.color = _theme.textPrimary;
+            ApplyTextColor(_titleText, _theme.textPrimary);
+            ApplyTextColor(_controlsHeaderText, _theme.textPrimary);
+            ApplyTextColor(_legendTitleText, _theme.textPrimary);
 
-            if (_serverIpText != null) _serverIpText.color = _theme.textSecondary;
-            if (_roomInfoText != null) _roomInfoText.color = _theme.textSecondary;
-            if (_playerPosText != null) _playerPosText.color = _theme.textSecondary;
+            ApplyTextColor(_serverIpText, _theme.textSecondary);
+            ApplyTextColor(_roomInfoText, _theme.textSecondary);
+            ApplyTextColor(_playerPosText, _theme.textSecondary);
 
             if (_legendBodyTexts != null)
             {
                 foreach (var t in _legendBodyTexts)
                 {
-                    if (t != null) t.color = _theme.textSecondary;
+                    ApplyTextColor(t, _theme.textSecondary);
                 }
             }
 
@@ -153,23 +165,50 @@ namespace MRUKSpectator.UI
             if (cardGo == null || _theme == null) return;
 
             Image img = cardGo.GetComponent<Image>();
-            if (img != null) img.color = _theme.cardBackground;
+            if (img != null)
+            {
+                img.color = _theme.cardBackground;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(img);
+#endif
+            }
 
             Outline outline = cardGo.GetComponent<Outline>();
-            if (outline != null) outline.effectColor = _theme.cardBorder;
+            if (outline != null)
+            {
+                outline.effectColor = _theme.cardBorder;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(outline);
+#endif
+            }
         }
 
         private void ApplyButtonStyle(Button btn)
         {
             if (btn == null || _theme == null) return;
 
+            // In uGUI ColorTint mode, targetGraphic.color multiplies with normalColor.
+            // Setting targetGraphic.color to White ensures button colors match the exact hex palette.
             Image img = btn.GetComponent<Image>();
-            if (img != null) img.color = _theme.buttonNormal;
+            if (img != null)
+            {
+                img.color = Color.white;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(img);
+#endif
+            }
 
             Outline outline = btn.GetComponent<Outline>();
-            if (outline != null) outline.effectColor = _theme.buttonBorder;
+            if (outline != null)
+            {
+                outline.effectColor = _theme.buttonBorder;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(outline);
+#endif
+            }
 
             var colors = btn.colors;
+            colors.colorMultiplier = 1f;
             colors.normalColor = _theme.buttonNormal;
             colors.highlightedColor = _theme.buttonHover;
             colors.pressedColor = _theme.buttonPressed;
@@ -177,7 +216,26 @@ namespace MRUKSpectator.UI
             btn.colors = colors;
 
             Text txt = btn.GetComponentInChildren<Text>();
-            if (txt != null) txt.color = _theme.buttonText;
+            if (txt != null)
+            {
+                txt.color = _theme.buttonText;
+#if UNITY_EDITOR
+                if (!Application.isPlaying) EditorUtility.SetDirty(txt);
+#endif
+            }
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying) EditorUtility.SetDirty(btn);
+#endif
+        }
+
+        private void ApplyTextColor(Text text, Color color)
+        {
+            if (text == null) return;
+            text.color = color;
+#if UNITY_EDITOR
+            if (!Application.isPlaying) EditorUtility.SetDirty(text);
+#endif
         }
 
         private void SetupButtonListeners()
@@ -206,6 +264,8 @@ namespace MRUKSpectator.UI
 
         private void Update()
         {
+            if (!Application.isPlaying) return;
+
             UpdateConnectionStatus();
             UpdateRoomInfo();
             UpdatePlayerInfo();
