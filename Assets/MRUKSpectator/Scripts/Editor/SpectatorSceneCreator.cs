@@ -80,16 +80,16 @@ namespace MRUKSpectator.Editor
             GameObject mgrGo = new GameObject("SpectatorManager");
             mgrGo.AddComponent<SpectatorServer>();
             mgrGo.AddComponent<SpectatorRoomManager>();
-            mgrGo.AddComponent<SpectatorHUD>();
 
             // Save scene
             Directory.CreateDirectory(Path.GetDirectoryName(PcScenePath));
             EditorSceneManager.SaveScene(scene, PcScenePath);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+
+            // 5. Build modern uGUI Canvas HUD
+            SpectatorUIBuilder.BuildOrUpgradeCanvas();
 
             AddSceneToBuildSettings(PcScenePath);
-            Debug.Log($"[SpectatorSceneCreator] Successfully created PC Spectator scene: {PcScenePath}");
+            Debug.Log($"[SpectatorSceneCreator] Successfully created PC Spectator scene with uGUI: {PcScenePath}");
         }
 
         [MenuItem("Tools/MRUK Spectator/2. Create Spectator Quest Scene", priority = 2)]
