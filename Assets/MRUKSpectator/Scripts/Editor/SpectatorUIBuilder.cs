@@ -41,10 +41,22 @@ namespace MRUKSpectator.Editor
                 UnityEngine.Object.DestroyImmediate(legacyHud);
             }
 
-            // Remove existing Canvas if upgrading
+            // Check if Canvas already exists - DO NOT overwrite user's custom edits!
             var existingCanvas = GameObject.Find("SpectatorCanvas");
             if (existingCanvas != null)
             {
+                bool overwrite = EditorUtility.DisplayDialog(
+                    "SpectatorCanvas Already Exists",
+                    "A SpectatorCanvas already exists in this scene.\n\nRebuilding will DELETE your existing canvas and any custom UI changes you made.\n\nDo you want to overwrite, or cancel to keep your changes?",
+                    "Overwrite Anyway",
+                    "Cancel (Keep My Changes)");
+
+                if (!overwrite)
+                {
+                    Debug.Log("[SpectatorUIBuilder] Aborted: Kept your custom UI changes intact.");
+                    return;
+                }
+
                 UnityEngine.Object.DestroyImmediate(existingCanvas);
             }
 

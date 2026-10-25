@@ -15,6 +15,8 @@ namespace MRUKSpectator.UI
     public class SpectatorCanvasHUD : MonoBehaviour
     {
         [Header("Theme Palette")]
+        [Tooltip("Enable only if you want the SpectatorTheme asset to override your manual Inspector colors. Keep false to preserve your own UI edits.")]
+        [SerializeField] private bool _usePaletteTheme = false;
         [SerializeField] private SpectatorTheme _theme;
 
         [Header("Status & Info References")]
@@ -49,6 +51,16 @@ namespace MRUKSpectator.UI
 
         private Image _imgFollowPlayer;
 
+        public bool UsePaletteTheme
+        {
+            get => _usePaletteTheme;
+            set
+            {
+                _usePaletteTheme = value;
+                if (_usePaletteTheme) ApplyTheme();
+            }
+        }
+
         public SpectatorTheme Theme
         {
             get => _theme;
@@ -56,8 +68,8 @@ namespace MRUKSpectator.UI
             {
                 if (_theme != null) _theme.OnThemeChanged -= ApplyTheme;
                 _theme = value;
-                if (_theme != null) _theme.OnThemeChanged += ApplyTheme;
-                ApplyTheme();
+                if (_theme != null && _usePaletteTheme) _theme.OnThemeChanged += ApplyTheme;
+                if (_usePaletteTheme) ApplyTheme();
             }
         }
 
@@ -73,11 +85,11 @@ namespace MRUKSpectator.UI
 
         private void OnEnable()
         {
-            if (_theme != null)
+            if (_usePaletteTheme && _theme != null)
             {
                 _theme.OnThemeChanged += ApplyTheme;
+                ApplyTheme();
             }
-            ApplyTheme();
         }
 
         private void OnDisable()
@@ -90,7 +102,7 @@ namespace MRUKSpectator.UI
 
         public void ApplyTheme()
         {
-            if (_theme == null) return;
+            if (!_usePaletteTheme || _theme == null) return;
 
             // 1. Scene Camera Background
             Camera cam = Camera.main;
