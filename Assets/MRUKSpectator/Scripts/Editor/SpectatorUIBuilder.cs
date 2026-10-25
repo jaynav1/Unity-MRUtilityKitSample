@@ -15,18 +15,14 @@ namespace MRUKSpectator.Editor
     public static class SpectatorUIBuilder
     {
         private const string PcScenePath = "Assets/MRUKSpectator/Scenes/SpectatorPC.unity";
-
-        private static readonly Color DarkBgColor = new Color(0.06f, 0.08f, 0.12f, 0.90f);
-        private static readonly Color CardBorderColor = new Color(0.18f, 0.40f, 0.65f, 0.35f);
-        private static readonly Color ButtonNormalColor = new Color(0.15f, 0.19f, 0.26f, 0.95f);
-        private static readonly Color ButtonHoverColor = new Color(0.20f, 0.38f, 0.58f, 1.0f);
-        private static readonly Color ButtonPressedColor = new Color(0.11f, 0.25f, 0.40f, 1.0f);
+        private const string ThemeAssetPath = "Assets/MRUKSpectator/SpectatorTheme.asset";
 
         [MenuItem("Tools/MRUK Spectator/Upgrade to uGUI Canvas HUD", priority = 3)]
         [MenuItem("MRUK Spectator/Upgrade to uGUI Canvas HUD", priority = 3)]
         public static void BuildOrUpgradeCanvas()
         {
             var activeScene = EditorSceneManager.GetActiveScene();
+
             if (activeScene.path != PcScenePath)
             {
                 if (File.Exists(PcScenePath))
@@ -34,6 +30,9 @@ namespace MRUKSpectator.Editor
                     activeScene = EditorSceneManager.OpenScene(PcScenePath, OpenSceneMode.Single);
                 }
             }
+
+            // Ensure Theme Palette Asset exists
+            SpectatorTheme theme = GetOrCreateThemeAsset();
 
             // Remove legacy SpectatorHUD if present on SpectatorManager
             var legacyHud = UnityEngine.Object.FindAnyObjectByType<SpectatorHUD>();
@@ -70,7 +69,7 @@ namespace MRUKSpectator.Editor
             // 3. Build Main Card (Top-Left)
             GameObject mainCard = CreatePanel(canvasGo.transform, "MainCard",
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(24f, -24f), new Vector2(390f, 470f), DarkBgColor, CardBorderColor);
+                new Vector2(24f, -24f), new Vector2(390f, 470f), theme.cardBackground, theme.cardBorder);
 
             var mainVlg = mainCard.AddComponent<VerticalLayoutGroup>();
             mainVlg.padding = new RectOffset(20, 20, 18, 18);
@@ -81,48 +80,68 @@ namespace MRUKSpectator.Editor
             mainVlg.childForceExpandHeight = false;
 
             // Title
-            CreateText(mainCard.transform, "Title", "MRUK 3D Room Spectator", 18, FontStyle.Bold, new Color(0.92f, 0.96f, 1f), 32);
+            Text titleText = CreateText(mainCard.transform, "Title", "MRUK 3D Room Spectator", 18, FontStyle.Bold, theme.textPrimary, 32);
 
-            // Status Pill (Row)
-            GameObject statusRow = CreateHorizontalRow(mainCard.transform, "StatusRow", 8, 26);
-            Image statusDot = CreateImage(statusRow.transform, "StatusDot", new Vector2(12f, 12f), new Color(1f, 0.72f, 0.2f, 1f));
-            var dotLayout = statusDot.gameObject.AddComponent<LayoutElement>();
-            dotLayout.preferredWidth = 12;
-            dotLayout.preferredHeight = 12;
-            dotLayout.flexibleWidth = 0;
+            // Status Row (Fixed dot size, not stretched)
+            GameObject statusRow = new GameObject("StatusRow");
+            statusRow.transform.SetParent(mainCard.transform, false);
+            RectTransform statusRowRt = statusRow.AddComponent<RectTransform>();
+            statusRowRt.sizeDelta = new Vector2(0f, 24f);
 
-            Text statusText = CreateText(statusRow.transform, "StatusText", "Waiting for Quest (LAN Beacon)...", 13, FontStyle.Bold, new Color(1f, 0.72f, 0.2f), 24);
+            var statusHlg = statusRow.AddComponent<HorizontalLayoutGroup>();
+            statusHlg.spacing = 10;
+            statusHlg.childAlignment = TextAnchor.MiddleLeft;
+            statusHlg.childControlWidth = false;
+            statusHlg.childControlHeight = false;
+            statusHlg.childForceExpandWidth = false;
+            statusHlg.childForceExpandHeight = false;
+
+            var statusRowLe = statusRow.AddComponent<LayoutElement>();
+            statusRowLe.preferredHeight = 24f;
+
+            // Dot: fixed 10x10 square
+            Image statusDot = CreateImage(statusRow.transform, "StatusDot", new Vector2(10f, 10f), theme.statusWaiting);
+            var dotLe = statusDot.gameObject.AddComponent<LayoutElement>();
+            dotLe.minWidth = 10;
+            dotLe.minHeight = 10;
+            dotLe.preferredWidth = 10;
+            dotLe.preferredHeight = 10;
+            dotLe.flexibleWidth = 0;
+
+            Text statusText = CreateText(statusRow.transform, "StatusText", "Waiting for Quest (LAN Beacon)...", 13, FontStyle.Bold, theme.statusWaiting, 24);
+            var statusTextLe = statusText.gameObject.AddComponent<LayoutElement>();
+            statusTextLe.preferredWidth = 320;
 
             // Network and Room Information Labels
-            Text serverIpText = CreateText(mainCard.transform, "ServerIpText", "Server IP: 127.0.0.1:9050", 12, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 20);
-            Text roomInfoText = CreateText(mainCard.transform, "RoomInfoText", "Room: Waiting for scan from Quest...", 12, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 20);
-            Text playerPosText = CreateText(mainCard.transform, "PlayerPosText", "Player: Not detected", 12, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 20);
+            Text serverIpText = CreateText(mainCard.transform, "ServerIpText", "Server IP: 127.0.0.1:9050", 12, FontStyle.Normal, theme.textSecondary, 20);
+            Text roomInfoText = CreateText(mainCard.transform, "RoomInfoText", "Room: Waiting for scan from Quest...", 12, FontStyle.Normal, theme.textSecondary, 20);
+            Text playerPosText = CreateText(mainCard.transform, "PlayerPosText", "Player: Not detected", 12, FontStyle.Normal, theme.textSecondary, 20);
 
             // Divider Line
-            CreateDivider(mainCard.transform, "Divider");
+            Image dividerImage = CreateDivider(mainCard.transform, "Divider", theme.dividerColor);
 
             // Section Subtitle
-            CreateText(mainCard.transform, "ControlsHeader", "Camera & Room Controls", 13, FontStyle.Bold, new Color(0.88f, 0.92f, 0.98f), 22);
+            Text controlsHeaderText = CreateText(mainCard.transform, "ControlsHeader", "Camera & Room Controls", 13, FontStyle.Bold, theme.textPrimary, 22);
 
             // Buttons: Row 1
             GameObject btnRow1 = CreateHorizontalRow(mainCard.transform, "BtnRow1", 8, 36);
-            Button btnTopDown = CreateButton(btnRow1.transform, "BtnTopDown", "Top-Down (Bird's Eye)", 12, out _);
-            Button btnIsometric = CreateButton(btnRow1.transform, "BtnIsometric", "Isometric 3D", 12, out _);
+            Button btnTopDown = CreateButton(btnRow1.transform, "BtnTopDown", "Top-Down (Bird's Eye)", 12, theme, out _);
+            Button btnIsometric = CreateButton(btnRow1.transform, "BtnIsometric", "Isometric 3D", 12, theme, out _);
 
             // Buttons: Row 2
             GameObject btnRow2 = CreateHorizontalRow(mainCard.transform, "BtnRow2", 8, 36);
-            Button btnFocusRoom = CreateButton(btnRow2.transform, "BtnFocusRoom", "Focus Room", 12, out _);
-            Button btnFollowPlayer = CreateButton(btnRow2.transform, "BtnFollowPlayer", "Follow Player", 12, out Text txtFollowPlayer);
+            Button btnFocusRoom = CreateButton(btnRow2.transform, "BtnFocusRoom", "Focus Room", 12, theme, out _);
+            Button btnFollowPlayer = CreateButton(btnRow2.transform, "BtnFollowPlayer", "Follow Player", 12, theme, out Text txtFollowPlayer);
 
             // Buttons: Row 3
             GameObject btnRow3 = CreateHorizontalRow(mainCard.transform, "BtnRow3", 8, 36);
-            Button btnToggleCeiling = CreateButton(btnRow3.transform, "BtnToggleCeiling", "Hide Ceiling", 12, out Text txtToggleCeiling);
-            Button btnClearTrail = CreateButton(btnRow3.transform, "BtnClearTrail", "Clear Trail", 12, out _);
+            Button btnToggleCeiling = CreateButton(btnRow3.transform, "BtnToggleCeiling", "Hide Ceiling", 12, theme, out Text txtToggleCeiling);
+            Button btnClearTrail = CreateButton(btnRow3.transform, "BtnClearTrail", "Clear Trail", 12, theme, out _);
 
             // 4. Build Controls Legend (Bottom-Right)
             GameObject legendCard = CreatePanel(canvasGo.transform, "LegendCard",
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
-                new Vector2(-24f, 24f), new Vector2(300f, 130f), DarkBgColor, CardBorderColor);
+                new Vector2(-24f, 24f), new Vector2(300f, 130f), theme.cardBackground, theme.cardBorder);
 
             var legendVlg = legendCard.AddComponent<VerticalLayoutGroup>();
             legendVlg.padding = new RectOffset(16, 16, 14, 14);
@@ -131,17 +150,17 @@ namespace MRUKSpectator.Editor
             legendVlg.childControlHeight = false;
             legendVlg.childForceExpandWidth = true;
 
-            CreateText(legendCard.transform, "LegendTitle", "Orbit Controls Legend", 13, FontStyle.Bold, new Color(0.92f, 0.96f, 1f), 20);
-            CreateText(legendCard.transform, "Legend1", "• Left Click + Drag: Orbit 3D Room", 11, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 18);
-            CreateText(legendCard.transform, "Legend2", "• Middle / Shift+Right: Pan Camera", 11, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 18);
-            CreateText(legendCard.transform, "Legend3", "• Mouse Scroll: Zoom In / Out", 11, FontStyle.Normal, new Color(0.76f, 0.80f, 0.86f), 18);
+            Text legendTitleText = CreateText(legendCard.transform, "LegendTitle", "Orbit Controls Legend", 13, FontStyle.Bold, theme.textPrimary, 20);
+            Text leg1 = CreateText(legendCard.transform, "Legend1", "• Left Click + Drag: Orbit 3D Room", 11, FontStyle.Normal, theme.textSecondary, 18);
+            Text leg2 = CreateText(legendCard.transform, "Legend2", "• Middle / Shift+Right: Pan Camera", 11, FontStyle.Normal, theme.textSecondary, 18);
+            Text leg3 = CreateText(legendCard.transform, "Legend3", "• Mouse Scroll: Zoom In / Out", 11, FontStyle.Normal, theme.textSecondary, 18);
 
             // 5. Mini HUD Toggle Button (Top-Right)
             GameObject toggleGo = CreatePanel(canvasGo.transform, "ToggleBtnContainer",
                 new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-                new Vector2(-24f, -24f), new Vector2(110f, 36f), DarkBgColor, CardBorderColor);
+                new Vector2(-24f, -24f), new Vector2(110f, 36f), theme.cardBackground, theme.cardBorder);
 
-            Button btnToggleHUD = CreateButton(toggleGo.transform, "BtnToggleHUD", "Toggle UI", 12, out _);
+            Button btnToggleHUD = CreateButton(toggleGo.transform, "BtnToggleHUD", "Toggle UI", 12, theme, out _);
             RectTransform btnToggleRt = btnToggleHUD.GetComponent<RectTransform>();
             btnToggleRt.anchorMin = Vector2.zero;
             btnToggleRt.anchorMax = Vector2.one;
@@ -150,11 +169,22 @@ namespace MRUKSpectator.Editor
 
             // 6. Connect serialized fields on SpectatorCanvasHUD
             var so = new SerializedObject(hud);
+            so.FindProperty("_theme").objectReferenceValue = theme;
             so.FindProperty("_statusText").objectReferenceValue = statusText;
             so.FindProperty("_statusDot").objectReferenceValue = statusDot;
             so.FindProperty("_serverIpText").objectReferenceValue = serverIpText;
             so.FindProperty("_roomInfoText").objectReferenceValue = roomInfoText;
             so.FindProperty("_playerPosText").objectReferenceValue = playerPosText;
+            so.FindProperty("_titleText").objectReferenceValue = titleText;
+            so.FindProperty("_controlsHeaderText").objectReferenceValue = controlsHeaderText;
+            so.FindProperty("_legendTitleText").objectReferenceValue = legendTitleText;
+
+            var legArrayProp = so.FindProperty("_legendBodyTexts");
+            legArrayProp.arraySize = 3;
+            legArrayProp.GetArrayElementAtIndex(0).objectReferenceValue = leg1;
+            legArrayProp.GetArrayElementAtIndex(1).objectReferenceValue = leg2;
+            legArrayProp.GetArrayElementAtIndex(2).objectReferenceValue = leg3;
+
             so.FindProperty("_btnTopDown").objectReferenceValue = btnTopDown;
             so.FindProperty("_btnIsometric").objectReferenceValue = btnIsometric;
             so.FindProperty("_btnFocusRoom").objectReferenceValue = btnFocusRoom;
@@ -166,14 +196,33 @@ namespace MRUKSpectator.Editor
             so.FindProperty("_btnToggleHUD").objectReferenceValue = btnToggleHUD;
             so.FindProperty("_mainCard").objectReferenceValue = mainCard;
             so.FindProperty("_legendCard").objectReferenceValue = legendCard;
+            so.FindProperty("_toggleBtnContainer").objectReferenceValue = toggleGo;
+            so.FindProperty("_dividerImage").objectReferenceValue = dividerImage;
             so.ApplyModifiedProperties();
+
+            // Apply palette immediately
+            hud.ApplyTheme();
 
             // Save Scene
             EditorSceneManager.SaveScene(activeScene);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log("[SpectatorUIBuilder] Successfully created uGUI Spectator Canvas HUD!");
+            Debug.Log("[SpectatorUIBuilder] Successfully created uGUI Spectator Canvas HUD with Theme Palette!");
+        }
+
+        private static SpectatorTheme GetOrCreateThemeAsset()
+        {
+            SpectatorTheme theme = AssetDatabase.LoadAssetAtPath<SpectatorTheme>(ThemeAssetPath);
+            if (theme == null)
+            {
+                theme = ScriptableObject.CreateInstance<SpectatorTheme>();
+                string dir = Path.GetDirectoryName(ThemeAssetPath);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                AssetDatabase.CreateAsset(theme, ThemeAssetPath);
+                AssetDatabase.SaveAssets();
+            }
+            return theme;
         }
 
         private static void EnsureEventSystem()
@@ -275,37 +324,39 @@ namespace MRUKSpectator.Editor
             return img;
         }
 
-        private static void CreateDivider(Transform parent, string name)
+        private static Image CreateDivider(Transform parent, string name, Color color)
         {
             GameObject div = new GameObject(name);
             div.transform.SetParent(parent, false);
 
             Image img = div.AddComponent<Image>();
-            img.color = new Color(0.25f, 0.35f, 0.45f, 0.35f);
+            img.color = color;
             img.raycastTarget = false;
 
             var le = div.AddComponent<LayoutElement>();
             le.preferredHeight = 1;
+
+            return img;
         }
 
-        private static Button CreateButton(Transform parent, string name, string label, int fontSize, out Text buttonText)
+        private static Button CreateButton(Transform parent, string name, string label, int fontSize, SpectatorTheme theme, out Text buttonText)
         {
             GameObject btnGo = new GameObject(name);
             btnGo.transform.SetParent(parent, false);
 
             Image img = btnGo.AddComponent<Image>();
-            img.color = ButtonNormalColor;
+            img.color = theme != null ? theme.buttonNormal : new Color(0.15f, 0.19f, 0.26f, 0.95f);
 
             Outline outline = btnGo.AddComponent<Outline>();
-            outline.effectColor = new Color(0.25f, 0.45f, 0.70f, 0.30f);
+            outline.effectColor = theme != null ? theme.buttonBorder : new Color(0.25f, 0.45f, 0.70f, 0.30f);
             outline.effectDistance = new Vector2(1f, -1f);
 
             Button btn = btnGo.AddComponent<Button>();
             var colors = btn.colors;
-            colors.normalColor = ButtonNormalColor;
-            colors.highlightedColor = ButtonHoverColor;
-            colors.pressedColor = ButtonPressedColor;
-            colors.selectedColor = ButtonHoverColor;
+            colors.normalColor = theme != null ? theme.buttonNormal : new Color(0.15f, 0.19f, 0.26f, 0.95f);
+            colors.highlightedColor = theme != null ? theme.buttonHover : new Color(0.20f, 0.38f, 0.58f, 1.0f);
+            colors.pressedColor = theme != null ? theme.buttonPressed : new Color(0.11f, 0.25f, 0.40f, 1.0f);
+            colors.selectedColor = colors.highlightedColor;
             colors.fadeDuration = 0.1f;
             btn.colors = colors;
 
@@ -324,7 +375,7 @@ namespace MRUKSpectator.Editor
             buttonText.text = label;
             buttonText.fontSize = fontSize;
             buttonText.fontStyle = FontStyle.Bold;
-            buttonText.color = Color.white;
+            buttonText.color = theme != null ? theme.buttonText : Color.white;
             buttonText.alignment = TextAnchor.MiddleCenter;
             buttonText.raycastTarget = false;
 
