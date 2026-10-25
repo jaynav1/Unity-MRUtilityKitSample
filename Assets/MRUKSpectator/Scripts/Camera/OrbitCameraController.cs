@@ -167,7 +167,7 @@ namespace MRUKSpectator.CameraController
             _currentTargetPoint = Vector3.Lerp(_currentTargetPoint, _targetPoint, t);
 
             // Compute spherical position around target
-            Quaternion rotation = Quaternion.Euler(_currentPitch, _currentYaw, 0f);
+            Quaternion rotation = Quaternion.Euler(_currentPitch, _currentYaw, 0f).normalized;
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
 
             transform.position = _currentTargetPoint + offset;
