@@ -10,7 +10,92 @@ namespace MRUKSpectator.Network
         Ping = 0,
         RoomData = 1,
         PoseData = 2,
-        ConnectionAck = 3
+        ConnectionAck = 3,
+        AssignPlayer = 4,
+        SpaceSharingData = 5,
+        SpawnMarker = 10,
+        DeleteMarker = 11,
+        ClearMarkers = 12,
+        RequestMarkers = 13
+    }
+
+    [Serializable]
+    public struct AssignPlayerPacket
+    {
+        public string playerId;
+        public Color32 playerColor;
+        public byte role; // 0 = Host, 1 = Guest
+
+        public static byte[] Serialize(AssignPlayerPacket packet)
+        {
+            using (var ms = new MemoryStream())
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write(packet.playerId ?? "Player_1");
+                writer.Write(packet.playerColor.r);
+                writer.Write(packet.playerColor.g);
+                writer.Write(packet.playerColor.b);
+                writer.Write(packet.playerColor.a);
+                writer.Write(packet.role);
+                return ms.ToArray();
+            }
+        }
+
+        public static AssignPlayerPacket Deserialize(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new AssignPlayerPacket
+                {
+                    playerId = reader.ReadString(),
+                    playerColor = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()),
+                    role = reader.ReadByte()
+                };
+            }
+        }
+    }
+
+    [Serializable]
+    public struct SpaceSharingDataPacket
+    {
+        public string groupUuid;
+        public string alignmentRoomUuid;
+        public Vector3 floorPosition;
+        public Quaternion floorRotation;
+
+        public static byte[] Serialize(SpaceSharingDataPacket packet)
+        {
+            using (var ms = new MemoryStream())
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write(packet.groupUuid ?? string.Empty);
+                writer.Write(packet.alignmentRoomUuid ?? string.Empty);
+                writer.Write(packet.floorPosition.x);
+                writer.Write(packet.floorPosition.y);
+                writer.Write(packet.floorPosition.z);
+                writer.Write(packet.floorRotation.x);
+                writer.Write(packet.floorRotation.y);
+                writer.Write(packet.floorRotation.z);
+                writer.Write(packet.floorRotation.w);
+                return ms.ToArray();
+            }
+        }
+
+        public static SpaceSharingDataPacket Deserialize(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new SpaceSharingDataPacket
+                {
+                    groupUuid = reader.ReadString(),
+                    alignmentRoomUuid = reader.ReadString(),
+                    floorPosition = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                    floorRotation = PosePacket.ReadSafeQuaternion(reader)
+                };
+            }
+        }
     }
 
     [Serializable]
@@ -48,10 +133,76 @@ namespace MRUKSpectator.Network
                 {
                     playerId = reader.ReadString(),
                     position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
-                    rotation = new Quaternion(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                    rotation = ReadSafeQuaternion(reader),
                     timestamp = reader.ReadSingle()
                 };
                 return packet;
+            }
+        }
+
+        internal static Quaternion ReadSafeQuaternion(BinaryReader reader)
+        {
+            float x = reader.ReadSingle();
+            float y = reader.ReadSingle();
+            float z = reader.ReadSingle();
+            float w = reader.ReadSingle();
+            float sqrMag = x * x + y * y + z * z + w * w;
+            if (sqrMag < 0.0001f || float.IsNaN(sqrMag) || float.IsInfinity(sqrMag))
+            {
+                return Quaternion.identity;
+            }
+            float invMag = 1.0f / Mathf.Sqrt(sqrMag);
+            return new Quaternion(x * invMag, y * invMag, z * invMag, w * invMag);
+        }
+    }
+
+    [Serializable]
+    public struct MarkerPacket
+    {
+        public string markerId;
+        public Vector3 localPosition;
+        public Quaternion localRotation;
+        public Color32 color;
+        public string label;
+        public float scale;
+
+        public static byte[] Serialize(MarkerPacket marker)
+        {
+            using (var ms = new MemoryStream())
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write(marker.markerId ?? Guid.NewGuid().ToString("N"));
+                writer.Write(marker.localPosition.x);
+                writer.Write(marker.localPosition.y);
+                writer.Write(marker.localPosition.z);
+                writer.Write(marker.localRotation.x);
+                writer.Write(marker.localRotation.y);
+                writer.Write(marker.localRotation.z);
+                writer.Write(marker.localRotation.w);
+                writer.Write(marker.color.r);
+                writer.Write(marker.color.g);
+                writer.Write(marker.color.b);
+                writer.Write(marker.color.a);
+                writer.Write(marker.label ?? "Marker");
+                writer.Write(marker.scale > 0f ? marker.scale : 1f);
+                return ms.ToArray();
+            }
+        }
+
+        public static MarkerPacket Deserialize(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new MarkerPacket
+                {
+                    markerId = reader.ReadString(),
+                    localPosition = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                    localRotation = PosePacket.ReadSafeQuaternion(reader),
+                    color = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()),
+                    label = reader.ReadString(),
+                    scale = reader.ReadSingle()
+                };
             }
         }
     }
