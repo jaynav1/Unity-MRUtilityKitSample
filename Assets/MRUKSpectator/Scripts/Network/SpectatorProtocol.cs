@@ -16,7 +16,10 @@ namespace MRUKSpectator.Network
         SpawnMarker = 10,
         DeleteMarker = 11,
         ClearMarkers = 12,
-        RequestMarkers = 13
+        RequestMarkers = 13,
+        WhiteboardDrawLine = 20,
+        WhiteboardClear = 21,
+        WhiteboardPose = 22
     }
 
     [Serializable]
@@ -202,6 +205,89 @@ namespace MRUKSpectator.Network
                     color = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()),
                     label = reader.ReadString(),
                     scale = reader.ReadSingle()
+                };
+            }
+        }
+    }
+
+    [Serializable]
+    public struct WhiteboardLinePacket
+    {
+        public Vector2 startUV;
+        public Vector2 endUV;
+        public Color32 color;
+        public byte brushRadius;
+
+        public static byte[] Serialize(WhiteboardLinePacket line)
+        {
+            using (var ms = new MemoryStream(21))
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write(line.startUV.x);
+                writer.Write(line.startUV.y);
+                writer.Write(line.endUV.x);
+                writer.Write(line.endUV.y);
+                writer.Write(line.color.r);
+                writer.Write(line.color.g);
+                writer.Write(line.color.b);
+                writer.Write(line.color.a);
+                writer.Write(line.brushRadius);
+                return ms.ToArray();
+            }
+        }
+
+        public static WhiteboardLinePacket Deserialize(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new WhiteboardLinePacket
+                {
+                    startUV = new Vector2(reader.ReadSingle(), reader.ReadSingle()),
+                    endUV = new Vector2(reader.ReadSingle(), reader.ReadSingle()),
+                    color = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()),
+                    brushRadius = reader.ReadByte()
+                };
+            }
+        }
+    }
+
+    [Serializable]
+    public struct WhiteboardPosePacket
+    {
+        public Vector3 localPosition;
+        public Quaternion localRotation;
+        public Vector3 localScale;
+
+        public static byte[] Serialize(WhiteboardPosePacket pose)
+        {
+            using (var ms = new MemoryStream(40))
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write(pose.localPosition.x);
+                writer.Write(pose.localPosition.y);
+                writer.Write(pose.localPosition.z);
+                writer.Write(pose.localRotation.x);
+                writer.Write(pose.localRotation.y);
+                writer.Write(pose.localRotation.z);
+                writer.Write(pose.localRotation.w);
+                writer.Write(pose.localScale.x);
+                writer.Write(pose.localScale.y);
+                writer.Write(pose.localScale.z);
+                return ms.ToArray();
+            }
+        }
+
+        public static WhiteboardPosePacket Deserialize(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new WhiteboardPosePacket
+                {
+                    localPosition = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                    localRotation = PosePacket.ReadSafeQuaternion(reader),
+                    localScale = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle())
                 };
             }
         }

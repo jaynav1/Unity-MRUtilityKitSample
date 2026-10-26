@@ -25,6 +25,9 @@ namespace MRUKSpectator.Network
         public event Action<MarkerPacket> OnMarkerSpawnRequested;
         public event Action<string> OnMarkerDeleteRequested;
         public event Action OnMarkersClearRequested;
+        public event Action<WhiteboardLinePacket> OnWhiteboardLineReceived;
+        public event Action OnWhiteboardClearReceived;
+        public event Action<WhiteboardPosePacket> OnWhiteboardPoseReceived;
 
         public bool IsRunning { get; private set; }
         public int ConnectedClientCount => _clientThreads.Count;
@@ -51,6 +54,9 @@ namespace MRUKSpectator.Network
         private readonly ConcurrentQueue<MarkerPacket> _spawnMarkerQueue = new();
         private readonly ConcurrentQueue<string> _deleteMarkerQueue = new();
         private readonly ConcurrentQueue<bool> _clearMarkersQueue = new();
+        private readonly ConcurrentQueue<WhiteboardLinePacket> _whiteboardLineQueue = new();
+        private readonly ConcurrentQueue<bool> _whiteboardClearQueue = new();
+        private readonly ConcurrentQueue<WhiteboardPosePacket> _whiteboardPoseQueue = new();
 
         private static readonly Color32[] PlayerColorPalette = new Color32[]
         {
@@ -171,6 +177,21 @@ namespace MRUKSpectator.Network
             while (_clearMarkersQueue.TryDequeue(out _))
             {
                 OnMarkersClearRequested?.Invoke();
+            }
+
+            while (_whiteboardLineQueue.TryDequeue(out var line))
+            {
+                OnWhiteboardLineReceived?.Invoke(line);
+            }
+
+            while (_whiteboardClearQueue.TryDequeue(out _))
+            {
+                OnWhiteboardClearReceived?.Invoke();
+            }
+
+            while (_whiteboardPoseQueue.TryDequeue(out var pose))
+            {
+                OnWhiteboardPoseReceived?.Invoke(pose);
             }
         }
 
@@ -312,6 +333,23 @@ namespace MRUKSpectator.Network
                                     _clearMarkersQueue.Enqueue(true);
                                     break;
 
+                                case PacketType.WhiteboardDrawLine:
+                                    WhiteboardLinePacket wbLine = WhiteboardLinePacket.Deserialize(payload);
+                                    _whiteboardLineQueue.Enqueue(wbLine);
+                                    BroadcastPacketExcept(endpoint, PacketType.WhiteboardDrawLine, payload);
+                                    break;
+
+                                case PacketType.WhiteboardClear:
+                                    _whiteboardClearQueue.Enqueue(true);
+                                    BroadcastPacketExcept(endpoint, PacketType.WhiteboardClear, payload);
+                                    break;
+
+                                case PacketType.WhiteboardPose:
+                                    WhiteboardPosePacket wbPose = WhiteboardPosePacket.Deserialize(payload);
+                                    _whiteboardPoseQueue.Enqueue(wbPose);
+                                    BroadcastPacketExcept(endpoint, PacketType.WhiteboardPose, payload);
+                                    break;
+
                                 case PacketType.Ping:
                                     // Keepalive
                                     break;
@@ -385,6 +423,21 @@ namespace MRUKSpectator.Network
                 }
                 catch { }
             }
+        }
+
+        public void SendWhiteboardLine(WhiteboardLinePacket line)
+        {
+            BroadcastPacket(PacketType.WhiteboardDrawLine, WhiteboardLinePacket.Serialize(line));
+        }
+
+        public void SendWhiteboardClear()
+        {
+            BroadcastPacket(PacketType.WhiteboardClear, Array.Empty<byte>());
+        }
+
+        public void SendWhiteboardPose(WhiteboardPosePacket pose)
+        {
+            BroadcastPacket(PacketType.WhiteboardPose, WhiteboardPosePacket.Serialize(pose));
         }
 
         private void BroadcastBeacon()
