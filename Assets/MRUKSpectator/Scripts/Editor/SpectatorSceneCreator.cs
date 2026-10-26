@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using Meta.XR.MRUtilityKit;
 using MRUKSpectator.CameraController;
+using MRUKSpectator.Markers;
 using MRUKSpectator.Network;
 using MRUKSpectator.UI;
 using MRUKSpectator.Visualization;
@@ -80,6 +81,7 @@ namespace MRUKSpectator.Editor
             GameObject mgrGo = new GameObject("SpectatorManager");
             mgrGo.AddComponent<SpectatorServer>();
             mgrGo.AddComponent<SpectatorRoomManager>();
+            mgrGo.AddComponent<SpectatorMarkerManager>();
 
             // Save scene
             Directory.CreateDirectory(Path.GetDirectoryName(PcScenePath));
@@ -110,12 +112,17 @@ namespace MRUKSpectator.Editor
 
             var scene = EditorSceneManager.OpenScene(QuestScenePath, OpenSceneMode.Single);
 
-            // Add QuestSender if not present
+            // Add QuestSender & SpectatorMarkerManager if not present
             QuestSender sender = Object.FindAnyObjectByType<QuestSender>();
             if (sender == null)
             {
                 GameObject senderGo = new GameObject("QuestSender");
                 senderGo.AddComponent<QuestSender>();
+                senderGo.AddComponent<SpectatorMarkerManager>();
+            }
+            else if (sender.GetComponent<SpectatorMarkerManager>() == null)
+            {
+                sender.gameObject.AddComponent<SpectatorMarkerManager>();
             }
 
             EditorSceneManager.SaveScene(scene);

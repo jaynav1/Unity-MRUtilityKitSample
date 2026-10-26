@@ -50,6 +50,7 @@ namespace MRUKSpectator.CameraController
             _currentPitch = _pitch;
             _currentDistance = _distance;
             _currentTargetPoint = _targetPoint;
+            UpdateCameraTransform();
         }
 
         private void LateUpdate()
@@ -76,7 +77,6 @@ namespace MRUKSpectator.CameraController
             if (isOverUI) return;
 
             bool isLeftPressed = false;
-            bool isRightPressed = false;
             bool isMiddlePressed = false;
             bool isShiftPressed = false;
             float dx = 0f;
@@ -89,7 +89,6 @@ namespace MRUKSpectator.CameraController
             if (mouse != null)
             {
                 isLeftPressed = mouse.leftButton.isPressed;
-                isRightPressed = mouse.rightButton.isPressed;
                 isMiddlePressed = mouse.middleButton.isPressed;
                 Vector2 delta = mouse.delta.ReadValue();
                 dx = delta.x * 0.15f * _orbitSensitivity;
@@ -100,25 +99,29 @@ namespace MRUKSpectator.CameraController
             {
                 isShiftPressed = kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
             }
-#else
-            try
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            if (!isLeftPressed && !isMiddlePressed && Mathf.Approximately(dx, 0f) && Mathf.Approximately(dy, 0f) && Mathf.Approximately(scroll, 0f))
             {
-                isLeftPressed = Input.GetMouseButton(0);
-                isRightPressed = Input.GetMouseButton(1);
-                isMiddlePressed = Input.GetMouseButton(2);
-                isShiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-                dx = Input.GetAxis("Mouse X") * _orbitSensitivity;
-                dy = Input.GetAxis("Mouse Y") * _orbitSensitivity;
-                scroll = Input.GetAxis("Mouse ScrollWheel");
-            }
-            catch (System.InvalidOperationException)
-            {
-                // In case legacy input is disabled
+                try
+                {
+                    isLeftPressed = Input.GetMouseButton(0);
+                    isMiddlePressed = Input.GetMouseButton(2);
+                    isShiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                    dx = Input.GetAxis("Mouse X") * _orbitSensitivity;
+                    dy = Input.GetAxis("Mouse Y") * _orbitSensitivity;
+                    scroll = Input.GetAxis("Mouse ScrollWheel");
+                }
+                catch (System.InvalidOperationException)
+                {
+                    // In case legacy input is disabled
+                }
             }
 #endif
 
-            // Orbit: Left click drag or Right click drag (without shift)
-            if (isLeftPressed || (isRightPressed && !isShiftPressed))
+            // Orbit: Left click drag (without shift)
+            if (isLeftPressed && !isShiftPressed)
             {
                 _yaw += dx;
                 _pitch -= dy;
@@ -130,8 +133,8 @@ namespace MRUKSpectator.CameraController
                 }
             }
 
-            // Pan: Middle click drag or Shift + Right click drag
-            if (isMiddlePressed || (isRightPressed && isShiftPressed))
+            // Pan: Middle click drag or Shift + Left click drag
+            if (isMiddlePressed || (isLeftPressed && isShiftPressed))
             {
                 float px = -dx * _panSensitivity * _distance;
                 float py = -dy * _panSensitivity * _distance;
@@ -157,6 +160,14 @@ namespace MRUKSpectator.CameraController
             }
         }
 
+        private static Quaternion NormalizeSafe(Quaternion q)
+        {
+            float sqr = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+            if (sqr < 0.00001f || float.IsNaN(sqr) || float.IsInfinity(sqr)) return Quaternion.identity;
+            float inv = 1.0f / Mathf.Sqrt(sqr);
+            return new Quaternion(q.x * inv, q.y * inv, q.z * inv, q.w * inv);
+        }
+
         private void UpdateCameraTransform()
         {
             // Smooth damp toward target values
@@ -166,8 +177,8 @@ namespace MRUKSpectator.CameraController
             _currentDistance = Mathf.Lerp(_currentDistance, _distance, t);
             _currentTargetPoint = Vector3.Lerp(_currentTargetPoint, _targetPoint, t);
 
-            // Compute spherical position around target
-            Quaternion rotation = Quaternion.Euler(_currentPitch, _currentYaw, 0f).normalized;
+            // Compute spherical position around target with strictly normalized orientation
+            Quaternion rotation = NormalizeSafe(Quaternion.Euler(_currentPitch, _currentYaw, 0f));
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
 
             transform.position = _currentTargetPoint + offset;
