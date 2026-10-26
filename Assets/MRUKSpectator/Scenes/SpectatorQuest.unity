@@ -428,6 +428,10 @@ PrefabInstance:
       value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 3613868102660323786, guid: c2e00db6d2dfa42ac8d821db8d493a44, type: 3}
+      propertyPath: SceneSettings.LoadSceneOnStartup
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3613868102660323786, guid: c2e00db6d2dfa42ac8d821db8d493a44, type: 3}
       propertyPath: SceneSettings.SceneJsons.Array.size
       value: 0
       objectReference: {fileID: 0}
@@ -948,6 +952,8 @@ MonoBehaviour:
   _poseSendFrequency: 60
   _headTransform: {fileID: 0}
   _playerId: Player_1
+  _role: 0
+  _standaloneTimeout: 4
 --- !u!1 &1019376940
 GameObject:
   m_ObjectHideFlags: 0
@@ -1541,8 +1547,16 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 2296141232796561049, guid: 37c47f9928e3fef4bb9a9ffaafab5526, type: 3}
+      propertyPath: MeshMaterial
+      value: 
+      objectReference: {fileID: 2100000, guid: 8fa20471b8e434f4aa0091e77d201102, type: 2}
+    - target: {fileID: 2296141232796561049, guid: 37c47f9928e3fef4bb9a9ffaafab5526, type: 3}
       propertyPath: SpawnOnStart
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2296141232796561049, guid: 37c47f9928e3fef4bb9a9ffaafab5526, type: 3}
+      propertyPath: Labels
+      value: 294918
       objectReference: {fileID: 0}
     - target: {fileID: 5456522116536683058, guid: 37c47f9928e3fef4bb9a9ffaafab5526, type: 3}
       propertyPath: m_LocalPosition.x
