@@ -14,11 +14,19 @@ namespace MRUKSpectator.Whiteboard
         [SerializeField] private bool _allowMovement = true;
         [SerializeField] private float _grabDistance = 0.5f;
 
+        public bool AllowMovement
+        {
+            get => _allowMovement;
+            set => _allowMovement = value;
+        }
+
+        public float GrabDistance
+        {
+            get => _grabDistance;
+            set => _grabDistance = value;
+        }
+
         private bool _isGrabbed;
-        private Transform _grabbingHand;
-        private Vector3 _grabOffset;
-        private Quaternion _grabRotOffset;
-        private float _lastSyncTime;
 
         private void Start()
         {

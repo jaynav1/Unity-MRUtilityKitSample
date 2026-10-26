@@ -68,12 +68,12 @@ namespace MRUKSpectator.Whiteboard
             {
                 try
                 {
-                    if (h.GetHandType() == OVRPlugin.Hand.HandLeft ||
+                    if (h.GetHand() == OVRPlugin.Hand.HandLeft ||
                         h.gameObject.name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         if (_leftHand == null) _leftHand = h;
                     }
-                    else if (h.GetHandType() == OVRPlugin.Hand.HandRight ||
+                    else if (h.GetHand() == OVRPlugin.Hand.HandRight ||
                              h.gameObject.name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         if (_rightHand == null) _rightHand = h;
