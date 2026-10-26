@@ -80,27 +80,47 @@ namespace MRUKSpectator.Whiteboard
             _pixelBuffer = new Color32[_textureWidth * _textureHeight];
             ClearBuffer(false);
 
-            // Assign to material
-            Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit") ??
-                                 Shader.Find("Universal Render Pipeline/Lit") ??
-                                 Shader.Find("Unlit/Texture") ??
-                                 Shader.Find("Standard");
-
-            _whiteboardMaterial = new Material(unlitShader)
+            if (_meshRenderer == null)
             {
-                name = "Whiteboard_Material"
-            };
+                _meshRenderer = GetComponent<MeshRenderer>();
+            }
+
+            if (_meshRenderer.sharedMaterial != null)
+            {
+                _whiteboardMaterial = new Material(_meshRenderer.sharedMaterial)
+                {
+                    name = "Whiteboard_Material_Instance"
+                };
+            }
+            else
+            {
+                Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit") ??
+                                     Shader.Find("Universal Render Pipeline/Lit") ??
+                                     Shader.Find("Unlit/Texture") ??
+                                     Shader.Find("Standard");
+
+                _whiteboardMaterial = new Material(unlitShader)
+                {
+                    name = "Whiteboard_Material_Instance"
+                };
+            }
+
+            // Disable backface culling (0 = Off) so the whiteboard is visible from both sides
+            if (_whiteboardMaterial.HasProperty("_Cull"))
+            {
+                _whiteboardMaterial.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+            }
 
             if (_whiteboardMaterial.HasProperty("_BaseMap"))
             {
                 _whiteboardMaterial.SetTexture("_BaseMap", WhiteboardTexture);
             }
-            else
+            if (_whiteboardMaterial.HasProperty("_MainTex"))
             {
-                _whiteboardMaterial.mainTexture = WhiteboardTexture;
+                _whiteboardMaterial.SetTexture("_MainTex", WhiteboardTexture);
             }
 
-            _meshRenderer.sharedMaterial = _whiteboardMaterial;
+            _meshRenderer.material = _whiteboardMaterial;
         }
 
         private void EnsureCollider()

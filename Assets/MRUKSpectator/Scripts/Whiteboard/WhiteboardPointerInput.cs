@@ -8,7 +8,7 @@ namespace MRUKSpectator.Whiteboard
     /// Supports:
     /// - Bare hands via Index Finger Pinching (hand.GetFingerIsPinching(OVRHand.HandFinger.Index))
     /// - Touch Controllers via Primary Index Trigger
-    /// - PC Spectator mouse drag in Editor and Standalone
+    /// - PC Spectator mouse drag in Editor and Standalone via New Input System
     /// </summary>
     public class WhiteboardPointerInput : MonoBehaviour
     {
@@ -45,7 +45,6 @@ namespace MRUKSpectator.Whiteboard
             public bool IsDrawing;
             public Vector2 LastUV;
             public GameObject Indicator;
-            public LineRenderer RayVisualizer;
         }
 
         private PointerState _leftState = new();
@@ -67,14 +66,29 @@ namespace MRUKSpectator.Whiteboard
             var hands = FindObjectsByType<OVRHand>();
             foreach (var h in hands)
             {
-                // In Meta XR Core, OVRHand has a field or name convention indicating left/right
-                if (h.gameObject.name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0)
+                try
                 {
-                    if (_leftHand == null) _leftHand = h;
+                    if (h.GetHandType() == OVRPlugin.Hand.HandLeft ||
+                        h.gameObject.name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (_leftHand == null) _leftHand = h;
+                    }
+                    else if (h.GetHandType() == OVRPlugin.Hand.HandRight ||
+                             h.gameObject.name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (_rightHand == null) _rightHand = h;
+                    }
                 }
-                else if (h.gameObject.name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0)
+                catch
                 {
-                    if (_rightHand == null) _rightHand = h;
+                    if (h.gameObject.name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (_leftHand == null) _leftHand = h;
+                    }
+                    else if (h.gameObject.name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        if (_rightHand == null) _rightHand = h;
+                    }
                 }
             }
         }
@@ -93,13 +107,16 @@ namespace MRUKSpectator.Whiteboard
             }
 
             Shader unlit = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
-            var mat = new Material(unlit)
+            if (unlit != null)
             {
-                color = color
-            };
-            if (indicator.TryGetComponent<Renderer>(out var rend))
-            {
-                rend.sharedMaterial = mat;
+                var mat = new Material(unlit)
+                {
+                    color = color
+                };
+                if (indicator.TryGetComponent<Renderer>(out var rend))
+                {
+                    rend.sharedMaterial = mat;
+                }
             }
 
             indicator.SetActive(false);
@@ -108,9 +125,31 @@ namespace MRUKSpectator.Whiteboard
 
         private void Update()
         {
-            UpdateHandOrControllerPointer(_leftHand, _leftController, ref _leftState);
-            UpdateHandOrControllerPointer(_rightHand, _rightController, ref _rightState);
-            UpdateMousePointer(ref _mouseState);
+            if (_leftHand == null || _rightHand == null)
+            {
+                AutoDetectHands();
+            }
+
+            try
+            {
+                UpdateHandOrControllerPointer(_leftHand, _leftController, ref _leftState);
+                UpdateHandOrControllerPointer(_rightHand, _rightController, ref _rightState);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[WhiteboardPointerInput] Hand/Controller update warning: {ex.Message}");
+            }
+
+#if !UNITY_ANDROID || UNITY_EDITOR
+            try
+            {
+                UpdateMousePointer(ref _mouseState);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[WhiteboardPointerInput] Mouse update warning: {ex.Message}");
+            }
+#endif
         }
 
         private void UpdateHandOrControllerPointer(OVRHand hand, OVRInput.Controller controller, ref PointerState state)
@@ -177,20 +216,36 @@ namespace MRUKSpectator.Whiteboard
 
         private void UpdateMousePointer(ref PointerState state)
         {
-            // Only process mouse if in Editor or standalone PC, and not on Quest
-#if !UNITY_ANDROID || UNITY_EDITOR
             Camera cam = Camera.main;
             if (cam == null) return;
 
-            Vector3 mousePos = Input.mousePosition;
-            Ray ray = cam.ScreenPointToRay(mousePos);
+            Vector2 mousePos = Vector2.zero;
+            bool isDown = false;
+            bool isHeld = false;
+            bool isUp = false;
 
-            bool isDown = Input.GetMouseButtonDown(0);
-            bool isHeld = Input.GetMouseButton(0);
-            bool isUp = Input.GetMouseButtonUp(0);
-
-            ProcessRayDrawing(ray, isDown, isHeld, isUp, ref state);
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null)
+            {
+                mousePos = mouse.position.ReadValue();
+                isDown = mouse.leftButton.wasPressedThisFrame;
+                isHeld = mouse.leftButton.isPressed;
+                isUp = mouse.leftButton.wasReleasedThisFrame;
+            }
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                mousePos = Input.mousePosition;
+                isDown = Input.GetMouseButtonDown(0);
+                isHeld = Input.GetMouseButton(0);
+                isUp = Input.GetMouseButtonUp(0);
+            }
+            catch { }
 #endif
+
+            Ray ray = cam.ScreenPointToRay(mousePos);
+            ProcessRayDrawing(ray, isDown, isHeld, isUp, ref state);
         }
 
         private void ProcessRayDrawing(Ray ray, bool isDown, bool isHeld, bool isUp, ref PointerState state)
