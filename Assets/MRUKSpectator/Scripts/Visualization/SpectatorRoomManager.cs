@@ -6,6 +6,7 @@ using MRUKSpectator.CameraController;
 using MRUKSpectator.Network;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 
 namespace MRUKSpectator.Visualization
 {
@@ -15,7 +16,11 @@ namespace MRUKSpectator.Visualization
 
         [Header("Room Appearance")]
         [SerializeField] private bool _hideCeilingByDefault = true;
-        [SerializeField] private Color _mrukBlueColor = new Color(0.143f, 0.690f, 0.868f, 1f);
+        [Tooltip("Color applied to the room meshes (walls, floor, furniture).")]
+        [FormerlySerializedAs("_mrukBlueColor")]
+        [SerializeField] private Color _roomMeshColor = new Color(0.143f, 0.690f, 0.868f, 1f);
+        [Tooltip("Optional: Custom material for all room meshes. If set, this overrides procedural shaders.")]
+        [SerializeField] private Material _customRoomMaterial;
 
         [Header("Player Tracking")]
         [SerializeField] private GameObject _playerAvatarPrefab;
@@ -30,10 +35,37 @@ namespace MRUKSpectator.Visualization
         public Vector3 RoomSize => _roomBounds.size;
         public bool IsCeilingHidden => _isCeilingHidden;
 
+        public Color RoomMeshColor
+        {
+            get => _roomMeshColor;
+            set
+            {
+                _roomMeshColor = value;
+                MRUKRoom room = MRUK.Instance != null ? MRUK.Instance.GetCurrentRoom() : null;
+                if (room != null) ApplyRoomStyling(room);
+            }
+        }
+
+        public Material CustomRoomMaterial
+        {
+            get => _customRoomMaterial;
+            set
+            {
+                _customRoomMaterial = value;
+                MRUKRoom room = MRUK.Instance != null ? MRUK.Instance.GetCurrentRoom() : null;
+                if (room != null) ApplyRoomStyling(room);
+            }
+        }
+
         private void Awake()
         {
             Instance = this;
             _isCeilingHidden = _hideCeilingByDefault;
+
+            if (!TryGetComponent<MRUKSpectator.Markers.SpectatorMarkerManager>(out _))
+            {
+                gameObject.AddComponent<MRUKSpectator.Markers.SpectatorMarkerManager>();
+            }
         }
 
         private void Start()
@@ -56,6 +88,18 @@ namespace MRUKSpectator.Visualization
 
         public async void HandleRoomJsonReceived(string json)
         {
+            if (string.IsNullOrEmpty(json) || json.Length < 50)
+            {
+                Debug.LogWarning("[SpectatorRoomManager] Ignoring empty or invalid room JSON.");
+                return;
+            }
+
+            if (HasRoomLoaded)
+            {
+                Debug.Log("[SpectatorRoomManager] Active room already loaded. Preserving host room.");
+                return;
+            }
+
             Debug.Log($"[SpectatorRoomManager] Loading received room JSON ({json.Length} chars)...");
             if (MRUK.Instance == null)
             {
@@ -111,21 +155,28 @@ namespace MRUKSpectator.Visualization
         private void GenerateRoomMeshes(MRUKRoom room)
         {
             _ceilingObjects.Clear();
-            Shader mrukShader = Shader.Find("MixedReality/SceneMeshDefault");
-            Material blueMaterial;
-            if (mrukShader != null)
+            Material roomMaterial;
+            if (_customRoomMaterial != null)
             {
-                blueMaterial = new Material(mrukShader);
-                blueMaterial.SetColor("_Color", _mrukBlueColor);
-                blueMaterial.SetFloat("_Angle", 60f);
+                roomMaterial = _customRoomMaterial;
             }
             else
             {
-                Shader fallbackShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-                blueMaterial = new Material(fallbackShader);
-                blueMaterial.color = _mrukBlueColor;
-                if (blueMaterial.HasProperty("_BaseColor")) blueMaterial.SetColor("_BaseColor", _mrukBlueColor);
-                if (blueMaterial.HasProperty("_Cull")) blueMaterial.SetFloat("_Cull", (float)CullMode.Off);
+                Shader mrukShader = Shader.Find("MixedReality/SceneMeshDefault");
+                if (mrukShader != null)
+                {
+                    roomMaterial = new Material(mrukShader);
+                    roomMaterial.SetColor("_Color", _roomMeshColor);
+                    roomMaterial.SetFloat("_Angle", 60f);
+                }
+                else
+                {
+                    Shader fallbackShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                    roomMaterial = new Material(fallbackShader);
+                    roomMaterial.color = _roomMeshColor;
+                    if (roomMaterial.HasProperty("_BaseColor")) roomMaterial.SetColor("_BaseColor", _roomMeshColor);
+                    if (roomMaterial.HasProperty("_Cull")) roomMaterial.SetFloat("_Cull", (float)CullMode.Off);
+                }
             }
 
             foreach (var anchor in room.Anchors)
@@ -156,22 +207,60 @@ namespace MRUKSpectator.Visualization
 
                 Mesh mesh = null;
 
-                // Procedural 3D Mesh Generation
+                // Procedural 3D Mesh & Collider Generation
                 if (anchor.VolumeBounds.HasValue)
                 {
                     mesh = CreateBoxMesh(anchor.VolumeBounds.Value);
+                    if (visualGo.TryGetComponent(out MeshCollider mc))
+                    {
+                        Destroy(mc);
+                    }
+                    if (!visualGo.TryGetComponent(out BoxCollider boxCollider))
+                    {
+                        boxCollider = visualGo.AddComponent<BoxCollider>();
+                    }
+                    boxCollider.center = anchor.VolumeBounds.Value.center;
+                    boxCollider.size = anchor.VolumeBounds.Value.size;
                 }
                 else if (anchor.PlaneBoundary2D != null && anchor.PlaneBoundary2D.Count >= 3)
                 {
                     mesh = CreatePolygonMesh(anchor.PlaneBoundary2D);
+                    if (visualGo.TryGetComponent(out BoxCollider bc))
+                    {
+                        Destroy(bc);
+                    }
+                    if (!visualGo.TryGetComponent(out MeshCollider meshCollider))
+                    {
+                        meshCollider = visualGo.AddComponent<MeshCollider>();
+                    }
+                    meshCollider.sharedMesh = mesh;
                 }
                 else if (anchor.PlaneRect.HasValue)
                 {
                     mesh = CreatePlaneMesh(anchor.PlaneRect.Value);
+                    if (visualGo.TryGetComponent(out MeshCollider mc))
+                    {
+                        Destroy(mc);
+                    }
+                    if (!visualGo.TryGetComponent(out BoxCollider boxCollider))
+                    {
+                        boxCollider = visualGo.AddComponent<BoxCollider>();
+                    }
+                    boxCollider.center = new Vector3(anchor.PlaneRect.Value.center.x, anchor.PlaneRect.Value.center.y, 0f);
+                    boxCollider.size = new Vector3(anchor.PlaneRect.Value.width, anchor.PlaneRect.Value.height, 0.02f);
                 }
                 else if (anchor.GlobalMesh != null)
                 {
                     mesh = anchor.GlobalMesh;
+                    if (visualGo.TryGetComponent(out BoxCollider bc))
+                    {
+                        Destroy(bc);
+                    }
+                    if (!visualGo.TryGetComponent(out MeshCollider meshCollider))
+                    {
+                        meshCollider = visualGo.AddComponent<MeshCollider>();
+                    }
+                    meshCollider.sharedMesh = mesh;
                 }
 
                 if (mesh != null)
@@ -186,7 +275,7 @@ namespace MRUKSpectator.Visualization
                     visualGo.SetActive(!_isCeilingHidden);
                 }
 
-                meshRenderer.sharedMaterial = blueMaterial;
+                meshRenderer.sharedMaterial = roomMaterial;
                 meshRenderer.shadowCastingMode = ShadowCastingMode.On;
             }
         }
@@ -196,43 +285,83 @@ namespace MRUKSpectator.Visualization
             Vector3 c = bounds.center;
             Vector3 ext = bounds.extents;
 
-            Vector3[] vertices = new Vector3[]
-            {
-                // Bottom
-                c + new Vector3(-ext.x, -ext.y, -ext.z),
-                c + new Vector3( ext.x, -ext.y, -ext.z),
-                c + new Vector3( ext.x, -ext.y,  ext.z),
-                c + new Vector3(-ext.x, -ext.y,  ext.z),
-                // Top
-                c + new Vector3(-ext.x,  ext.y, -ext.z),
-                c + new Vector3( ext.x,  ext.y, -ext.z),
-                c + new Vector3( ext.x,  ext.y,  ext.z),
-                c + new Vector3(-ext.x,  ext.y,  ext.z),
-            };
+            Vector3 min = c - ext;
+            Vector3 max = c + ext;
 
-            int[] triangles = new int[]
-            {
-                // Bottom
-                0, 2, 1, 0, 3, 2,
-                // Top
-                4, 5, 6, 4, 6, 7,
-                // Front
-                0, 1, 5, 0, 5, 4,
-                // Back
-                2, 3, 7, 2, 7, 6,
-                // Left
-                3, 0, 4, 3, 4, 7,
-                // Right
-                1, 2, 6, 1, 6, 5
-            };
+            // 24 vertices (4 per face x 6 faces) with exact outward normals
+            Vector3[] vertices = new Vector3[24];
+            Vector3[] normals = new Vector3[24];
+            Vector2[] uvs = new Vector2[24];
+            int[] triangles = new int[36];
+
+            // 0: Top face (+Y)
+            vertices[0] = new Vector3(min.x, max.y, min.z);
+            vertices[1] = new Vector3(max.x, max.y, min.z);
+            vertices[2] = new Vector3(max.x, max.y, max.z);
+            vertices[3] = new Vector3(min.x, max.y, max.z);
+            for (int i = 0; i < 4; i++) normals[i] = Vector3.up;
+            uvs[0] = new Vector2(0, 0); uvs[1] = new Vector2(1, 0); uvs[2] = new Vector2(1, 1); uvs[3] = new Vector2(0, 1);
+            triangles[0] = 0; triangles[1] = 3; triangles[2] = 2;
+            triangles[3] = 0; triangles[4] = 2; triangles[5] = 1;
+
+            // 1: Bottom face (-Y)
+            vertices[4] = new Vector3(min.x, min.y, max.z);
+            vertices[5] = new Vector3(max.x, min.y, max.z);
+            vertices[6] = new Vector3(max.x, min.y, min.z);
+            vertices[7] = new Vector3(min.x, min.y, min.z);
+            for (int i = 4; i < 8; i++) normals[i] = Vector3.down;
+            uvs[4] = new Vector2(0, 0); uvs[5] = new Vector2(1, 0); uvs[6] = new Vector2(1, 1); uvs[7] = new Vector2(0, 1);
+            triangles[6] = 4; triangles[7] = 7; triangles[8] = 6;
+            triangles[9] = 4; triangles[10] = 6; triangles[11] = 5;
+
+            // 2: Front face (+Z)
+            vertices[8]  = new Vector3(min.x, min.y, max.z);
+            vertices[9]  = new Vector3(max.x, min.y, max.z);
+            vertices[10] = new Vector3(max.x, max.y, max.z);
+            vertices[11] = new Vector3(min.x, max.y, max.z);
+            for (int i = 8; i < 12; i++) normals[i] = Vector3.forward;
+            uvs[8] = new Vector2(0, 0); uvs[9] = new Vector2(1, 0); uvs[10] = new Vector2(1, 1); uvs[11] = new Vector2(0, 1);
+            triangles[12] = 8; triangles[13] = 11; triangles[14] = 10;
+            triangles[15] = 8; triangles[16] = 10; triangles[17] = 9;
+
+            // 3: Back face (-Z)
+            vertices[12] = new Vector3(max.x, min.y, min.z);
+            vertices[13] = new Vector3(min.x, min.y, min.z);
+            vertices[14] = new Vector3(min.x, max.y, min.z);
+            vertices[15] = new Vector3(max.x, max.y, min.z);
+            for (int i = 12; i < 16; i++) normals[i] = Vector3.back;
+            uvs[12] = new Vector2(0, 0); uvs[13] = new Vector2(1, 0); uvs[14] = new Vector2(1, 1); uvs[15] = new Vector2(0, 1);
+            triangles[18] = 12; triangles[19] = 15; triangles[20] = 14;
+            triangles[21] = 12; triangles[22] = 14; triangles[23] = 13;
+
+            // 4: Right face (+X)
+            vertices[16] = new Vector3(max.x, min.y, min.z);
+            vertices[17] = new Vector3(max.x, max.y, min.z);
+            vertices[18] = new Vector3(max.x, max.y, max.z);
+            vertices[19] = new Vector3(max.x, min.y, max.z);
+            for (int i = 16; i < 20; i++) normals[i] = Vector3.right;
+            uvs[16] = new Vector2(0, 0); uvs[17] = new Vector2(1, 0); uvs[18] = new Vector2(1, 1); uvs[19] = new Vector2(0, 1);
+            triangles[24] = 16; triangles[25] = 17; triangles[26] = 18;
+            triangles[27] = 16; triangles[28] = 18; triangles[29] = 19;
+
+            // 5: Left face (-X)
+            vertices[20] = new Vector3(min.x, min.y, max.z);
+            vertices[21] = new Vector3(min.x, max.y, max.z);
+            vertices[22] = new Vector3(min.x, max.y, min.z);
+            vertices[23] = new Vector3(min.x, min.y, min.z);
+            for (int i = 20; i < 24; i++) normals[i] = Vector3.left;
+            uvs[20] = new Vector2(0, 0); uvs[21] = new Vector2(1, 0); uvs[22] = new Vector2(1, 1); uvs[23] = new Vector2(0, 1);
+            triangles[30] = 20; triangles[31] = 21; triangles[32] = 22;
+            triangles[33] = 20; triangles[34] = 22; triangles[35] = 23;
 
             Mesh mesh = new Mesh
             {
                 name = "BoxVisualMesh",
                 vertices = vertices,
+                normals = normals,
+                uv = uvs,
                 triangles = triangles
             };
-            mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
         }
@@ -506,6 +635,16 @@ namespace MRUKSpectator.Visualization
             marker.UpdateTargetPose(pose.position, pose.rotation);
         }
 
+        private static readonly Color[] PlayerColorPalette = new Color[]
+        {
+            new Color(0.0f, 0.898f, 1.0f, 1.0f),  // Player 1: Vivid Cyan (#00E5FF)
+            new Color(1.0f, 0.569f, 0.0f, 1.0f),  // Player 2: Vivid Orange (#FF9100)
+            new Color(0.835f, 0.0f, 0.976f, 1.0f), // Player 3: Vivid Magenta (#D500F9)
+            new Color(0.0f, 0.902f, 0.463f, 1.0f), // Player 4: Vivid Spring Green (#00E676)
+            new Color(1.0f, 0.839f, 0.0f, 1.0f),  // Player 5: Gold (#FFD600)
+            new Color(1.0f, 0.251f, 0.506f, 1.0f)  // Player 6: Coral Pink (#FF4081)
+        };
+
         private PlayerAvatarMarker CreatePlayerAvatar(string id)
         {
             GameObject go;
@@ -520,6 +659,10 @@ namespace MRUKSpectator.Visualization
             }
 
             PlayerAvatarMarker marker = go.GetComponent<PlayerAvatarMarker>();
+            int playerIndex = _players.Count;
+            Color playerColor = PlayerColorPalette[playerIndex % PlayerColorPalette.Length];
+            string displayName = id.Replace("_", " ");
+            marker.SetPlayerIdentity(id, playerColor, displayName);
             return marker;
         }
 
@@ -528,5 +671,8 @@ namespace MRUKSpectator.Visualization
             foreach (var p in _players.Values) return p;
             return null;
         }
+
+        public IReadOnlyCollection<PlayerAvatarMarker> GetAllPlayers() => _players.Values;
+        public int PlayerCount => _players.Count;
     }
 }

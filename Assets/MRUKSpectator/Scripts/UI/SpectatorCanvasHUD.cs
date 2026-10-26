@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using Meta.XR.MRUtilityKit;
 using MRUKSpectator.CameraController;
 using MRUKSpectator.Network;
@@ -45,6 +46,9 @@ namespace MRUKSpectator.UI
         [SerializeField] private Text _txtToggleCeiling;
         [SerializeField] private Button _btnClearTrail;
         [SerializeField] private Button _btnToggleHUD;
+        [SerializeField] private Button _btnToggleMarkerMode;
+        [SerializeField] private Text _txtMarkerMode;
+        [SerializeField] private Button _btnClearMarkers;
 
         [Header("Panels")]
         [SerializeField] private GameObject _mainCard;
@@ -53,6 +57,7 @@ namespace MRUKSpectator.UI
         [SerializeField] private Image _dividerImage;
 
         private Image _imgFollowPlayer;
+        private Image _imgMarkerMode;
 
         public SpectatorTheme Theme
         {
@@ -71,6 +76,11 @@ namespace MRUKSpectator.UI
             if (_btnFollowPlayer != null)
             {
                 _imgFollowPlayer = _btnFollowPlayer.GetComponent<Image>();
+            }
+
+            if (_btnToggleMarkerMode != null)
+            {
+                _imgMarkerMode = _btnToggleMarkerMode.GetComponent<Image>();
             }
 
             if (Application.isPlaying)
@@ -260,6 +270,12 @@ namespace MRUKSpectator.UI
 
             if (_btnToggleHUD != null)
                 _btnToggleHUD.onClick.AddListener(OnToggleHUDClicked);
+
+            if (_btnToggleMarkerMode != null)
+                _btnToggleMarkerMode.onClick.AddListener(OnToggleMarkerModeClicked);
+
+            if (_btnClearMarkers != null)
+                _btnClearMarkers.onClick.AddListener(OnClearMarkersClicked);
         }
 
         private void Update()
@@ -306,7 +322,9 @@ namespace MRUKSpectator.UI
             if (hasRoom)
             {
                 var mgr = SpectatorRoomManager.Instance;
-                _roomInfoText.text = $"Room: {mgr.AnchorCount} Anchors | {mgr.RoomSize.x:F1}m x {mgr.RoomSize.z:F1}m (H: {mgr.RoomSize.y:F1}m)";
+                int markerCount = MRUKSpectator.Markers.SpectatorMarkerManager.Instance != null ? MRUKSpectator.Markers.SpectatorMarkerManager.Instance.MarkerCount : 0;
+                string markerStr = markerCount > 0 ? $" | {markerCount} Markers" : "";
+                _roomInfoText.text = $"Room: {mgr.AnchorCount} Anchors | {mgr.RoomSize.x:F1}m x {mgr.RoomSize.z:F1}m{markerStr}";
             }
             else
             {
@@ -318,15 +336,31 @@ namespace MRUKSpectator.UI
         {
             if (_playerPosText == null) return;
 
-            var player = SpectatorRoomManager.Instance != null ? SpectatorRoomManager.Instance.GetPrimaryPlayer() : null;
-            if (player != null)
+            var roomMgr = SpectatorRoomManager.Instance;
+            if (roomMgr != null && roomMgr.PlayerCount > 0)
             {
-                Vector3 pos = player.CurrentPosition;
-                _playerPosText.text = $"Player: X: {pos.x:F2}m | Y: {pos.y:F2}m | Z: {pos.z:F2}m";
+                if (roomMgr.PlayerCount == 1)
+                {
+                    var player = roomMgr.GetPrimaryPlayer();
+                    Vector3 pos = player.CurrentPosition;
+                    _playerPosText.text = $"Player 1: X: {pos.x:F2}m | Y: {pos.y:F2}m | Z: {pos.z:F2}m";
+                }
+                else
+                {
+                    var sb = new StringBuilder();
+                    int count = 0;
+                    foreach (var p in roomMgr.GetAllPlayers())
+                    {
+                        if (count++ > 0) sb.Append("  |  ");
+                        Vector3 pos = p.CurrentPosition;
+                        sb.Append($"{p.PlayerId}: ({pos.x:F1}, {pos.y:F1}, {pos.z:F1})");
+                    }
+                    _playerPosText.text = sb.ToString();
+                }
             }
             else
             {
-                _playerPosText.text = "Player: Not detected";
+                _playerPosText.text = "Players: Not detected";
             }
         }
 
@@ -348,6 +382,18 @@ namespace MRUKSpectator.UI
             if (_txtToggleCeiling != null)
             {
                 _txtToggleCeiling.text = ceilingHidden ? "Show Ceiling" : "Hide Ceiling";
+            }
+
+            bool isPlacing = MRUKSpectator.Markers.SpectatorMarkerManager.Instance != null && MRUKSpectator.Markers.SpectatorMarkerManager.Instance.IsPlacementModeActive;
+            if (_txtMarkerMode != null)
+            {
+                _txtMarkerMode.text = isPlacing ? "Marker Mode: ON" : "Place Marker";
+            }
+            if (_imgMarkerMode != null)
+            {
+                Color activeCol = _theme != null ? _theme.buttonActiveState : new Color(0.14f, 0.45f, 0.65f, 1f);
+                Color normalCol = _theme != null ? _theme.buttonNormal : new Color(0.16f, 0.19f, 0.26f, 1f);
+                _imgMarkerMode.color = isPlacing ? activeCol : normalCol;
             }
         }
 
@@ -398,6 +444,20 @@ namespace MRUKSpectator.UI
                 _mainCard.SetActive(active);
                 if (_legendCard != null) _legendCard.SetActive(active);
             }
+        }
+
+        public void OnToggleMarkerModeClicked()
+        {
+            if (MRUKSpectator.Markers.SpectatorMarkerManager.Instance != null)
+            {
+                var mgr = MRUKSpectator.Markers.SpectatorMarkerManager.Instance;
+                mgr.IsPlacementModeActive = !mgr.IsPlacementModeActive;
+            }
+        }
+
+        public void OnClearMarkersClicked()
+        {
+            MRUKSpectator.Markers.SpectatorMarkerManager.Instance?.ClearAllMarkers();
         }
     }
 }
