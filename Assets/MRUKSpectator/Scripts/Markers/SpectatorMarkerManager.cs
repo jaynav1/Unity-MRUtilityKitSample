@@ -175,14 +175,19 @@ namespace MRUKSpectator.Markers
 
             if (!hasPointerPos) return;
 
+            // Do not interact with markers if whiteboard is being grabbed
+            if (MRUKSpectator.Whiteboard.WhiteboardDraggable.AnyWhiteboardGrabbed) return;
+
             // Left Click: Place Marker (if Placement Mode is on, or Shift is held)
             if ((_placementModeActive || placeModifier) && leftClickDown)
             {
                 Ray ray = cam.ScreenPointToRay(mouseScreenPos);
                 if (Physics.Raycast(ray, out RaycastHit hit, 100f, _raycastLayers))
                 {
-                    // Check if clicked an existing marker to avoid accidental stacking
-                    if (hit.collider.GetComponentInParent<NetworkMarker>() == null)
+                    // Check if clicked an existing marker or whiteboard to avoid accidental placement
+                    if (hit.collider.GetComponentInParent<NetworkMarker>() == null &&
+                        hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.SpectatorWhiteboard>() == null &&
+                        hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.WhiteboardDraggable>() == null)
                     {
                         SpawnMarkerAtWorldHit(hit);
                     }
@@ -200,7 +205,8 @@ namespace MRUKSpectator.Markers
                     {
                         DeleteMarker(marker.MarkerId, broadcast: true);
                     }
-                    else
+                    else if (hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.SpectatorWhiteboard>() == null &&
+                             hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.WhiteboardDraggable>() == null)
                     {
                         SpawnMarkerAtWorldHit(hit);
                     }

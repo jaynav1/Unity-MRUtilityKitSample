@@ -44,11 +44,20 @@ namespace MRUKSpectator.Whiteboard
         private Quaternion _sourceInitialRotation;
         private float _lastBroadcastTime;
 
+        public static bool AnyWhiteboardGrabbed { get; private set; }
         public bool IsGrabbed => _activeGrabSource != GrabSourceType.None;
 
         private void Awake()
         {
             _collider = GetComponent<Collider>();
+        }
+
+        private void OnDisable()
+        {
+            if (_activeGrabSource != GrabSourceType.None)
+            {
+                EndGrab();
+            }
         }
 
         private void Start()
@@ -160,30 +169,72 @@ namespace MRUKSpectator.Whiteboard
 
             Vector2 mousePos = Vector2.zero;
             bool isDown = false;
+            bool isQPressed = false;
+            bool isEPressed = false;
+            bool isRPressed = false;
 
 #if ENABLE_INPUT_SYSTEM
             var mouse = UnityEngine.InputSystem.Mouse.current;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
             if (mouse != null)
             {
                 mousePos = mouse.position.ReadValue();
                 isDown = mouse.rightButton.wasPressedThisFrame || mouse.middleButton.wasPressedThisFrame;
+            }
+            if (kb != null)
+            {
+                isQPressed = kb.qKey.isPressed;
+                isEPressed = kb.eKey.isPressed;
+                isRPressed = kb.rKey.wasPressedThisFrame;
             }
 #elif ENABLE_LEGACY_INPUT_MANAGER
             try
             {
                 mousePos = Input.mousePosition;
                 isDown = Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
+                isQPressed = Input.GetKey(KeyCode.Q);
+                isEPressed = Input.GetKey(KeyCode.E);
+                isRPressed = Input.GetKeyDown(KeyCode.R);
             }
             catch { }
 #endif
 
-            if (isDown)
+            Ray ray = cam.ScreenPointToRay(mousePos);
+            bool isHovered = _collider.Raycast(ray, out RaycastHit hit, 50f);
+
+            // Quick rotation when mouse is hovering over whiteboard
+            if (isHovered)
             {
-                Ray ray = cam.ScreenPointToRay(mousePos);
-                if (_collider.Raycast(ray, out RaycastHit hit, 50f))
+                bool rotChanged = false;
+                if (isQPressed)
                 {
-                    StartGrab(GrabSourceType.Mouse, hit, ray, Quaternion.identity);
+                    transform.Rotate(Vector3.up, -90f * Time.deltaTime, Space.World);
+                    rotChanged = true;
                 }
+                if (isEPressed)
+                {
+                    transform.Rotate(Vector3.up, 90f * Time.deltaTime, Space.World);
+                    rotChanged = true;
+                }
+                if (isRPressed)
+                {
+                    Vector3 lookDir = transform.position - cam.transform.position;
+                    lookDir.y = 0;
+                    if (lookDir.sqrMagnitude > 0.001f)
+                    {
+                        transform.rotation = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
+                        rotChanged = true;
+                    }
+                }
+                if (rotChanged)
+                {
+                    MaybeBroadcastPose(false);
+                }
+            }
+
+            if (isDown && isHovered)
+            {
+                StartGrab(GrabSourceType.Mouse, hit, ray, Quaternion.identity);
             }
         }
 
@@ -228,6 +279,7 @@ namespace MRUKSpectator.Whiteboard
         private void StartGrab(GrabSourceType source, RaycastHit hit, Ray ray, Quaternion sourceRot)
         {
             _activeGrabSource = source;
+            AnyWhiteboardGrabbed = true;
             _grabDistanceAlongRay = hit.distance;
             _grabLocalPoint = transform.InverseTransformPoint(hit.point);
             _grabInitialRotation = transform.rotation;
@@ -256,23 +308,48 @@ namespace MRUKSpectator.Whiteboard
             if (cam == null) { EndGrab(); return; }
 
             Vector2 mousePos = Vector2.zero;
+            Vector2 mouseDelta = Vector2.zero;
             float scroll = 0f;
             bool isHeld = false;
+            bool isMiddleButton = false;
+            bool isShiftHeld = false;
+            bool isCtrlHeld = false;
+            bool isQPressed = false;
+            bool isEPressed = false;
+            bool isRPressed = false;
 
 #if ENABLE_INPUT_SYSTEM
             var mouse = UnityEngine.InputSystem.Mouse.current;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
             if (mouse != null)
             {
                 mousePos = mouse.position.ReadValue();
+                mouseDelta = mouse.delta.ReadValue();
                 scroll = mouse.scroll.ReadValue().y * 0.002f;
                 isHeld = mouse.rightButton.isPressed || mouse.middleButton.isPressed;
+                isMiddleButton = mouse.middleButton.isPressed;
+            }
+            if (kb != null)
+            {
+                isShiftHeld = kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
+                isCtrlHeld = kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed;
+                isQPressed = kb.qKey.isPressed;
+                isEPressed = kb.eKey.isPressed;
+                isRPressed = kb.rKey.wasPressedThisFrame;
             }
 #elif ENABLE_LEGACY_INPUT_MANAGER
             try
             {
                 mousePos = Input.mousePosition;
+                mouseDelta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
                 scroll = Input.mouseScrollDelta.y * 0.2f;
                 isHeld = Input.GetMouseButton(1) || Input.GetMouseButton(2);
+                isMiddleButton = Input.GetMouseButton(2);
+                isShiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                isCtrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+                isQPressed = Input.GetKey(KeyCode.Q);
+                isEPressed = Input.GetKey(KeyCode.E);
+                isRPressed = Input.GetKeyDown(KeyCode.R);
             }
             catch { }
 #endif
@@ -283,7 +360,39 @@ namespace MRUKSpectator.Whiteboard
                 return;
             }
 
+            // Adjust depth with scroll wheel
             _grabDistanceAlongRay = Mathf.Clamp(_grabDistanceAlongRay + scroll, 0.5f, 20f);
+
+            // Rotate if Shift or Ctrl is held, or if Middle Mouse Button is being used
+            bool isRotating = isShiftHeld || isCtrlHeld || isMiddleButton;
+            if (isRotating)
+            {
+                float rotSpeed = 0.35f;
+                transform.Rotate(Vector3.up, -mouseDelta.x * rotSpeed, Space.World);
+                transform.Rotate(cam.transform.right, mouseDelta.y * rotSpeed, Space.World);
+            }
+
+            // Continuous rotation with Q / E keys
+            if (isQPressed)
+            {
+                transform.Rotate(Vector3.up, -90f * Time.deltaTime, Space.World);
+            }
+            if (isEPressed)
+            {
+                transform.Rotate(Vector3.up, 90f * Time.deltaTime, Space.World);
+            }
+
+            // R key: Snap rotation to face spectator camera upright
+            if (isRPressed)
+            {
+                Vector3 lookDir = transform.position - cam.transform.position;
+                lookDir.y = 0;
+                if (lookDir.sqrMagnitude > 0.001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
+                }
+            }
+
             Ray ray = cam.ScreenPointToRay(mousePos);
             Vector3 targetPivot = ray.GetPoint(_grabDistanceAlongRay);
 
@@ -356,6 +465,7 @@ namespace MRUKSpectator.Whiteboard
         {
             _activeGrabSource = GrabSourceType.None;
             _activeHand = null;
+            AnyWhiteboardGrabbed = false;
             MaybeBroadcastPose(true);
         }
 
