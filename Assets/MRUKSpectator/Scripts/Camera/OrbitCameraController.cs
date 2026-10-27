@@ -36,6 +36,7 @@ namespace MRUKSpectator.CameraController
         private float _currentDistance;
         private Vector3 _currentTargetPoint;
         private Camera _cam;
+        private bool _isOrbitingWithRightClick;
 
         public Vector3 TargetPoint => _targetPoint;
         public bool IsFollowingPlayer => _followPlayer;
@@ -76,9 +77,10 @@ namespace MRUKSpectator.CameraController
             }
             if (isOverUI) return;
 
-            bool isLeftPressed = false;
+            bool isRightPressed = false;
             bool isMiddlePressed = false;
             bool isShiftPressed = false;
+            Vector2 mouseScreenPos = Vector2.zero;
             float dx = 0f;
             float dy = 0f;
             float scroll = 0f;
@@ -88,7 +90,8 @@ namespace MRUKSpectator.CameraController
             var kb = Keyboard.current;
             if (mouse != null)
             {
-                isLeftPressed = mouse.leftButton.isPressed;
+                mouseScreenPos = mouse.position.ReadValue();
+                isRightPressed = mouse.rightButton.isPressed;
                 isMiddlePressed = mouse.middleButton.isPressed;
                 Vector2 delta = mouse.delta.ReadValue();
                 dx = delta.x * 0.15f * _orbitSensitivity;
@@ -99,29 +102,42 @@ namespace MRUKSpectator.CameraController
             {
                 isShiftPressed = kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
             }
-#endif
-
-#if ENABLE_LEGACY_INPUT_MANAGER
-            if (!isLeftPressed && !isMiddlePressed && Mathf.Approximately(dx, 0f) && Mathf.Approximately(dy, 0f) && Mathf.Approximately(scroll, 0f))
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            try
             {
-                try
-                {
-                    isLeftPressed = Input.GetMouseButton(0);
-                    isMiddlePressed = Input.GetMouseButton(2);
-                    isShiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-                    dx = Input.GetAxis("Mouse X") * _orbitSensitivity;
-                    dy = Input.GetAxis("Mouse Y") * _orbitSensitivity;
-                    scroll = Input.GetAxis("Mouse ScrollWheel");
-                }
-                catch (System.InvalidOperationException)
-                {
-                    // In case legacy input is disabled
-                }
+                mouseScreenPos = Input.mousePosition;
+                isRightPressed = Input.GetMouseButton(1);
+                isMiddlePressed = Input.GetMouseButton(2);
+                isShiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                dx = Input.GetAxis("Mouse X") * _orbitSensitivity;
+                dy = Input.GetAxis("Mouse Y") * _orbitSensitivity;
+                scroll = Input.GetAxis("Mouse ScrollWheel");
+            }
+            catch (System.InvalidOperationException)
+            {
+                // In case legacy input is disabled
             }
 #endif
 
-            // Orbit: Left click drag (without shift)
-            if (isLeftPressed && !isShiftPressed)
+            // Check if Right-click drag should orbit the camera
+            if (isRightPressed)
+            {
+                if (!_isOrbitingWithRightClick)
+                {
+                    // Do not start orbit if interacting with whiteboard
+                    if (!MRUKSpectator.Whiteboard.WhiteboardDraggable.AnyWhiteboardGrabbed && !IsPointerOverWhiteboard(mouseScreenPos))
+                    {
+                        _isOrbitingWithRightClick = true;
+                    }
+                }
+            }
+            else
+            {
+                _isOrbitingWithRightClick = false;
+            }
+
+            // Orbit: Right click drag (without shift, and not on whiteboard)
+            if (_isOrbitingWithRightClick && !isShiftPressed)
             {
                 _yaw += dx;
                 _pitch -= dy;
@@ -133,8 +149,8 @@ namespace MRUKSpectator.CameraController
                 }
             }
 
-            // Pan: Middle click drag or Shift + Left click drag
-            if (isMiddlePressed || (isLeftPressed && isShiftPressed))
+            // Pan: Middle click drag or Shift + Right click drag
+            if (isMiddlePressed || (_isOrbitingWithRightClick && isShiftPressed))
             {
                 float px = -dx * _panSensitivity * _distance;
                 float py = -dy * _panSensitivity * _distance;
@@ -166,6 +182,26 @@ namespace MRUKSpectator.CameraController
             if (sqr < 0.00001f || float.IsNaN(sqr) || float.IsInfinity(sqr)) return Quaternion.identity;
             float inv = 1.0f / Mathf.Sqrt(sqr);
             return new Quaternion(q.x * inv, q.y * inv, q.z * inv, q.w * inv);
+        }
+
+        private bool IsPointerOverWhiteboard(Vector2 mouseScreenPos)
+        {
+            if (_cam == null) return false;
+            Ray ray = _cam.ScreenPointToRay(mouseScreenPos);
+            if (Physics.Raycast(ray, out RaycastHit hit, 50f))
+            {
+                if (hit.collider != null)
+                {
+                    if (hit.collider.name.IndexOf("Whiteboard", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        (hit.collider.transform.parent != null && hit.collider.transform.parent.name.IndexOf("Whiteboard", System.StringComparison.OrdinalIgnoreCase) >= 0) ||
+                        hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.SpectatorWhiteboard>() != null ||
+                        hit.collider.GetComponentInParent<MRUKSpectator.Whiteboard.WhiteboardDraggable>() != null)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private void UpdateCameraTransform()

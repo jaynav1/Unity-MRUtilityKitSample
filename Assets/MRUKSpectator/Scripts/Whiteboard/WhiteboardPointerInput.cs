@@ -226,19 +226,22 @@ namespace MRUKSpectator.Whiteboard
 
 #if ENABLE_INPUT_SYSTEM
             var mouse = UnityEngine.InputSystem.Mouse.current;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            bool isShiftHeld = kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
             if (mouse != null)
             {
                 mousePos = mouse.position.ReadValue();
-                isDown = mouse.leftButton.wasPressedThisFrame;
-                isHeld = mouse.leftButton.isPressed;
+                isDown = mouse.leftButton.wasPressedThisFrame && !isShiftHeld;
+                isHeld = mouse.leftButton.isPressed && !isShiftHeld;
                 isUp = mouse.leftButton.wasReleasedThisFrame;
             }
 #elif ENABLE_LEGACY_INPUT_MANAGER
             try
             {
+                bool isShiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
                 mousePos = Input.mousePosition;
-                isDown = Input.GetMouseButtonDown(0);
-                isHeld = Input.GetMouseButton(0);
+                isDown = Input.GetMouseButtonDown(0) && !isShiftHeld;
+                isHeld = Input.GetMouseButton(0) && !isShiftHeld;
                 isUp = Input.GetMouseButtonUp(0);
             }
             catch { }
