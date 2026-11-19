@@ -93,7 +93,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b, type: 2}
+  - {fileID: 0}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -198,4 +198,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MRUKSpectator.Whiteboard.WhiteboardDraggable
   _allowMovement: 1
-  _grabDistance: 0.5
+  _grabDistance: 5
